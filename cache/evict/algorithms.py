@@ -72,8 +72,6 @@ class PredictAlgorithm(EvictAlgorithm):
     def snapshot(self):
         return (list(zip(self.cache, self.pcs)), self.preds)
     
-    # ** Important **
-    # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
     def before_pred(self, pc, address):
         if self.cur_boost_type is not None and self.cur_boost_type == 'before':
             self.preds = self.cur_boost_pred
@@ -81,7 +79,7 @@ class PredictAlgorithm(EvictAlgorithm):
             preds = self.predictor.refresh_scores(self.timestamp, pc, address, self.snapshot()[0])
             if preds is not None:
                 self.preds = preds
-
+    
     def after_pred(self, pc ,address, target_index):
         if self.cur_boost_type is not None and self.cur_boost_type == 'after':
             self.preds[target_index] = self.cur_boost_pred
@@ -102,7 +100,6 @@ class PredictAlgorithm(EvictAlgorithm):
 
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
 
         self.before_pred(pc, address)
@@ -113,14 +110,9 @@ class PredictAlgorithm(EvictAlgorithm):
             target_index = self.cache.index(None)
         else:
             target_index = self.evictor.evict(list(enumerate(self.preds)))
-            pred_call = 1
         self.cache[target_index], self.pcs[target_index] = address, pc
-        
-        # ** Important **
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-
-        return hit, pred_call
+        return hit
 
 ######################################################################
 
@@ -145,7 +137,6 @@ class PredictiveMarker(PredictAlgorithm):
         hit = False
         self.before_pred(pc, address)
         target_index = -1
-        pred_call = 0
 
         if address in self.cache:
             target_index = self.cache.index(address)
@@ -159,25 +150,20 @@ class PredictiveMarker(PredictAlgorithm):
                 self.marked = [0] * self.associativity
             if address not in self.tracking_set:
                 target_index = self.evictor.evict([(i, self.preds[i]) for i, mark in enumerate(self.marked) if mark == 0])
-                pred_call = 1
                 self.chains_len.append(1)
                 self.chains_rep.append(self.cache[target_index])
             if address in self.tracking_set:
                 index = self.chains_rep.index(address)
                 if self.chains_len[index] <= self.h_k:
                     target_index = self.evictor.evict([(i, self.preds[i]) for i, mark in enumerate(self.marked) if mark == 0])
-                    pred_call = 1
                 else:
                     target_index = random.choice([i for i, mark in enumerate(self.marked) if mark == 0])
                 self.chains_rep[index] = self.cache[target_index]
 
         self.cache[target_index], self.pcs[target_index] = address, pc
         self.marked[target_index] = 1
-
-        # ** Important **
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-        return hit, pred_call
+        return hit
 
 class LMarker(PredictAlgorithm):
     """
@@ -194,7 +180,6 @@ class LMarker(PredictAlgorithm):
     
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
 
         self.before_pred(pc, address)
@@ -212,15 +197,11 @@ class LMarker(PredictAlgorithm):
                 target_index = random.choice([i for i, mark in enumerate(self.marked) if mark == 0])
             else:
                 target_index = self.evictor.evict([(i, self.preds[i]) for i, mark in enumerate(self.marked) if mark == 0])
-                pred_call = 1
         
         self.cache[target_index], self.pcs[target_index] = address, pc
         self.marked[target_index] = 1
-
-        # ** Important **
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-        return hit, pred_call
+        return hit
 
 class LNonMarker(PredictAlgorithm):
     """
@@ -239,7 +220,6 @@ class LNonMarker(PredictAlgorithm):
     
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
         self.before_pred(pc, address)
 
@@ -262,16 +242,13 @@ class LNonMarker(PredictAlgorithm):
                     target_index = random.choice([i for i, mark in enumerate(self.marked) if mark == 0])
             else:
                 target_index = self.evictor.evict([(i, self.preds[i]) for i, mark in enumerate(self.marked) if mark == 0])
-                pred_call = 1
         
         self.evicts[self.cache[target_index]] = address
         self.cache[target_index], self.pcs[target_index] = address, pc
         self.marked[target_index] = 1
         self.phase.add(address)
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-        return hit, pred_call
+        return hit
 
 class Mark0(PredictAlgorithm):
     """
@@ -290,7 +267,6 @@ class Mark0(PredictAlgorithm):
     
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
 
         self.before_pred(pc, address)
@@ -317,12 +293,10 @@ class Mark0(PredictAlgorithm):
         self.S_visited[target_index] = 1
         self.marked[target_index] = 1
         self.cache[target_index], self.pcs[target_index] = address, pc
-
         self.after_pred(pc, address, target_index)
-        pred_call = 1
         if self.preds[target_index] == 1:
             self.cache[target_index], self.pcs[target_index] = None, None
-        return hit, pred_call
+        return hit
 
 class MarkAndPredict(PredictAlgorithm):
     """
@@ -341,7 +315,6 @@ class MarkAndPredict(PredictAlgorithm):
     
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
 
         self.before_pred(pc, address)
@@ -354,14 +327,11 @@ class MarkAndPredict(PredictAlgorithm):
             if all(mark == 1 for mark in self.marked):
                 self.marked = [0] * self.associativity
             target_index = self.evictor.evict([(i, self.preds[i]) for i, mark in enumerate(self.marked) if mark == 0])
-            pred_call = 1
         
         self.cache[target_index], self.pcs[target_index] = address, pc
         self.marked[target_index] = 1
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-        return hit, pred_call
+        return hit
 
 class FollowerRobust(PredictAlgorithm):
     """
@@ -428,7 +398,6 @@ class FollowerRobust(PredictAlgorithm):
         self.online_belady_dis = [np.inf] * associativity
         self.boost_beladys.append(copy.deepcopy(self.online_belady_cache))
         if self.boost:
-            # boost belady
             def oracle_access(self, pc, address, next_access_time):
                 if address in self.online_belady_cache:
                     target_index = self.online_belady_cache.index(address)
@@ -495,7 +464,6 @@ class FollowerRobust(PredictAlgorithm):
     
     def follow_robust(self, pc, address):
         target_index = -1
-        pred_call = 0
         # get next state
         if self.cur_boost_type is not None and self.cur_boost_type == 'before':
             preds = self.cur_boost_pred
@@ -510,7 +478,6 @@ class FollowerRobust(PredictAlgorithm):
             index_to_evict = self.sim_cache.index(None)
             self.sim_cache[index_to_evict] = address
             self.prediction = copy.deepcopy(preds)
-            pred_call = 1
         if address not in self.sim_cache:
             target_index = None
             if self.skip == 0:
@@ -520,7 +487,6 @@ class FollowerRobust(PredictAlgorithm):
                 if address not in self.prediction and (self.follow_cost <= self.belady_cost):
                     if self.pred_gap <= 0:
                         self.prediction = preds
-                        pred_call = 1 # call
                         self.pred_gap = self.a
                         dd = self.differ(self.sim_cache, self.prediction)
                         target_index = self.sim_cache.index(random.choice(dd))
@@ -566,7 +532,6 @@ class FollowerRobust(PredictAlgorithm):
                     if ((self.a==1) and (arrival_no in self.F)) or ((self.a > 1) and (self.pred_gap <= 0)):
                         self.pred_gap = self.a
                         self.prediction = copy.deepcopy(preds)
-                        pred_call = 1 # call
                     if arrival_no in self.S:
                         self.unmarked_for_reload = []
                         for p in self.unmarked:
@@ -602,11 +567,9 @@ class FollowerRobust(PredictAlgorithm):
             assert pred is None
         self.pred_gap -= 1
         self.traces.append(address)
-
-        return pred_call
     
     def access(self, pc, address):
-        pred_call = self.follow_robust(pc, address)
+        self.follow_robust(pc, address)
 
         ## Lazy
         target_index = -1
@@ -628,381 +591,7 @@ class FollowerRobust(PredictAlgorithm):
         self.key_scores[target_index] = self.timestamp
         self.cache[target_index], self.pcs[target_index] = address, pc
         self.timestamp += 1
-        return hit, pred_call
-    
-class PhaseLRU(PredictAlgorithm):
-    """
-    PhaseLRU algorithm
-
-    Parameters:
-    
-    - follow_if_guarded
-
-    - relax_times
-
-    - relax_prob
-
-    Our work
-    """
-    def __init__(self, associativity, evictor_type: Union[Type[Evictor], partial], predictor_type: Union[Predictor, partial], **kwargs) -> None:
-        super().__init__(associativity, evictor_type, predictor_type)
-        self.old_unvisited_set = []
-        self.phase_evicted_set = set()
-        self.error_times = 0
-        self.timestamp = 0
-        self.evicted_ts = {}
-        self.page_access_ts = [0] * associativity
-        self.lru_budget = 0
-        self.lru_left = 0
-        self.lru_adaptive_budget = 0
-        self.req_dict = set()
-        self.associativity = associativity
-
-        if 'lru_budget' in kwargs:
-            self.lru_budget = kwargs['lru_budget']
-            if self.lru_budget == 0:
-                self.lru_adaptive_budget = 1
-
-        if 'follow_if_guarded' in kwargs:
-            self.follow_if_guarded = kwargs['follow_if_guarded']
-        else:
-            self.follow_if_guarded = False
-        if 'relax_times' in kwargs:
-            self.relax_times = kwargs['relax_times']
-        else:
-            self.relax_times = 0
-        if 'relax_prob' in kwargs:
-            self.relax_prob = kwargs['relax_prob']
-        else:
-            self.relax_prob = 0
-    
-    def access(self, pc, address):
-        target_index = -1
-        pred_call = 0
-        hit = False
-
-        self.req_dict.add(address)
-
-        self.before_pred(pc, address)
-        if address in self.cache:
-            target_index = self.cache.index(address)
-            hit = True
-        elif None in self.cache:
-            target_index = self.cache.index(None)
-        else:
-            if len(self.req_dict) >= self.associativity:
-                self.req_dict = set()
-                self.evicted_ts = {}
-                if self.lru_adaptive_budget == 1:
-                    self.lru_budget = 0
-
-            #if not self.old_unvisited_set:
-            #    self.old_unvisited_set = list(range(self.associativity))
-            #    self.phase_evicted_set = set()
-            #    self.error_times = 0
-            
-            #if address in self.phase_evicted_set:
-            if address in self.evicted_ts and min(self.page_access_ts) < self.evicted_ts[address]:
-                self.lru_left = self.lru_budget
-                if self.lru_adaptive_budget == 1:
-                    if self.lru_budget == 0:
-                        self.lru_budget = 1
-                    else:
-                        self.lru_budget *= 2
-
-            if self.lru_left > 0:
-                target_index = self.evictor.evict([(i, -self.page_access_ts[i]) for i in list(range(self.associativity))])
-                self.lru_left -= 1
-            else:
-                target_index = self.evictor.evict([(i, self.preds[i]) for i in list(range(self.associativity))])
-                pred_call = 1
-            
-                self.evicted_ts[self.cache[target_index]] = self.timestamp
-
-        #if target_index in self.old_unvisited_set:
-        #    self.old_unvisited_set.remove(target_index)
-        
-        self.cache[target_index], self.pcs[target_index] = address, pc
-        self.page_access_ts[target_index] = self.timestamp
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
-        self.after_pred(pc, address, target_index)
-
-        self.timestamp += 1
-
-        return hit, pred_call
-    
-class LARU(PredictAlgorithm):
-    """
-    LARU algorithm
-
-    Our work
-    """
-    def __init__(self, associativity, evictor_type: Union[Type[Evictor], partial], predictor_type: Union[Predictor, partial], **kwargs) -> None:
-        super().__init__(associativity, evictor_type, predictor_type)
-        self.old_unvisited_set = []
-        self.error_times = 0
-        self.timestamp = 0
-        self.evicted_ts = {}
-        self.page_access_ts = [0] * associativity
-        self.beta = 1
-        self.err_num = 0
-        self.candidate_num = associativity
-        self.lru_left = 0
-        self.inv_count = 0
-        self.req_dict = set()
-        self.associativity = associativity
-
-        if 'beta' in kwargs:
-            self.beta = kwargs['beta']
-
-    def access(self, pc, address):
-        target_index = -1
-        pred_call = 0
-        hit = False
-
-        self.req_dict.add(address)
-
-        self.before_pred(pc, address)
-        if address in self.cache:
-            target_index = self.cache.index(address)
-            hit = True
-        elif None in self.cache:
-            target_index = self.cache.index(None)
-        else:
-            #if len(self.req_dict) >= self.associativity:
-            if not self.old_unvisited_set:
-                self.old_unvisited_set = list(range(self.associativity))
-                self.req_dict.clear() # phase counter
-                self.evicted_ts = {} # eviction recorder
-                self.inv_count = 0 # phase inversion counter
-                self.lru_left = 0 # phase lru budget
-                self.err_num = 0
-                self.candidate_num = self.associativity
-
-            if address in self.evicted_ts:
-                target_index = self.evictor.evict([(i, -self.page_access_ts[i]) for i in list(range(self.associativity))])
-                self.candidate_num = max(int(self.candidate_num / 2), 1)
-                self.err_num += 1
-            else:
-                candidates = [(self.page_access_ts[i], i) for i in list(range(self.associativity))]
-                candidates.sort()
-                if self.beta == -1:
-                    if self.err_num >= 2:
-                        candidates = candidates[: 1]
-                    else:
-                        candidates = candidates[: self.associativity]
-                elif self.beta == 0:
-                    candidates = candidates[: self.candidate_num]
-                else:
-                    candidates = candidates[: self.beta]
-                target_index = self.evictor.evict([(can[1], self.preds[can[1]]) for can in candidates])
-                pred_call = 1
-
-                self.evicted_ts[self.cache[target_index]] = self.timestamp
-
-        if target_index in self.old_unvisited_set:
-            self.old_unvisited_set.remove(target_index)
-        
-        self.cache[target_index], self.pcs[target_index] = address, pc
-        self.page_access_ts[target_index] = self.timestamp
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
-        self.after_pred(pc, address, target_index)
-
-        self.timestamp += 1
-
-        return hit, pred_call
-    
-class PredictiveLRU(PredictAlgorithm):
-    """
-    PredictiveLRU algorithm
-
-    Parameters:
-    
-    - follow_if_guarded
-
-    - relax_times
-
-    - relax_prob
-
-    Our work
-    """
-    def __init__(self, associativity, evictor_type: Union[Type[Evictor], partial], predictor_type: Union[Predictor, partial], **kwargs) -> None:
-        super().__init__(associativity, evictor_type, predictor_type)
-        self.old_unvisited_set = []
-        self.error_times = 0
-        self.timestamp = 0
-        self.evicted_ts = {}
-        self.page_access_ts = [0] * associativity
-        self.beta = 1
-        self.lru_left = 0
-        self.inv_count = 0
-        self.req_dict = set()
-        self.associativity = associativity
-
-        if 'beta' in kwargs:
-            self.beta = kwargs['beta']
-            self.alpha = self.beta
-
-        if 'follow_if_guarded' in kwargs:
-            self.follow_if_guarded = kwargs['follow_if_guarded']
-        else:
-            self.follow_if_guarded = False
-        if 'relax_times' in kwargs:
-            self.relax_times = kwargs['relax_times']
-        else:
-            self.relax_times = 0
-        if 'relax_prob' in kwargs:
-            self.relax_prob = kwargs['relax_prob']
-        else:
-            self.relax_prob = 0
-
-    def _f(self, x):
-        #return 2**(1.0 * x/self.alpha - self.beta)
-        return 2 * x / self.associativity
-    
-    def access(self, pc, address):
-        target_index = -1
-        pred_call = 0
-        hit = False
-
-        self.req_dict.add(address)
-
-        self.before_pred(pc, address)
-        if address in self.cache:
-            target_index = self.cache.index(address)
-            hit = True
-        elif None in self.cache:
-            target_index = self.cache.index(None)
-        else:
-            if len(self.req_dict) >= self.associativity:
-                self.req_dict = set() # phase counter
-                self.evicted_ts = {} # eviction recorder
-                self.inv_count = 0 # phase inversion counter
-                self.lru_left = 0 # phase lru budget
-
-            if address in self.evicted_ts:
-                target_index = self.evictor.evict([(i, -self.page_access_ts[i]) for i in list(range(self.associativity))])
-            else:
-                target_index = self.evictor.evict([(i, self.preds[i]) for i in list(range(self.associativity))])
-                pred_call = 1
-
-                self.evicted_ts[self.cache[target_index]] = self.timestamp
-
-        #if target_index in self.old_unvisited_set:
-        #    self.old_unvisited_set.remove(target_index)
-        
-        self.cache[target_index], self.pcs[target_index] = address, pc
-        self.page_access_ts[target_index] = self.timestamp
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
-        self.after_pred(pc, address, target_index)
-
-        self.timestamp += 1
-
-        return hit, pred_call
-
-class PredictiveLinearLRU(PredictAlgorithm):
-    """
-    PredictiveLRU algorithm
-
-    Parameters:
-    
-    - follow_if_guarded
-
-    - relax_times
-
-    - relax_prob
-
-    Our work
-    """
-    def __init__(self, associativity, evictor_type: Union[Type[Evictor], partial], predictor_type: Union[Predictor, partial], **kwargs) -> None:
-        super().__init__(associativity, evictor_type, predictor_type)
-        self.old_unvisited_set = []
-        self.error_times = 0
-        self.timestamp = 0
-        self.evicted_ts = {}
-        self.page_access_ts = [0] * associativity
-        self.beta = 1
-        self.lru_left = 0
-        self.req_dict = set()
-        self.associativity = associativity
-        self.inv_count = 0
-
-        if 'beta' in kwargs:
-            self.beta = kwargs['beta']
-            self.alpha = self.beta
-
-        if 'follow_if_guarded' in kwargs:
-            self.follow_if_guarded = kwargs['follow_if_guarded']
-        else:
-            self.follow_if_guarded = False
-        if 'relax_times' in kwargs:
-            self.relax_times = kwargs['relax_times']
-        else:
-            self.relax_times = 0
-        if 'relax_prob' in kwargs:
-            self.relax_prob = kwargs['relax_prob']
-        else:
-            self.relax_prob = 0
-    
-    def access(self, pc, address):
-        target_index = -1
-        pred_call = 0
-        hit = False
-
-        self.req_dict.add(address)
-
-        self.before_pred(pc, address)
-        if address in self.cache:
-            target_index = self.cache.index(address)
-            hit = True
-        elif None in self.cache:
-            target_index = self.cache.index(None)
-        else:
-            if len(self.req_dict) >= self.associativity:
-                self.req_dict = set()
-                self.evicted_ts = {}
-                #self.lru_left = 0
-                self.inv_count = 0
-
-            if address in self.evicted_ts and min(self.page_access_ts) < self.evicted_ts[address]:
-                count = 0
-                for ts in self.page_access_ts:
-                    if ts < self.evicted_ts[address]:
-                        count += 1
-                self.inv_count += count
-
-                if self.inv_count >= self.beta:
-                    self.lru_left += 3 * self.associativity
-
-                #self.lru_left += 1.0 * count / self.beta
-
-                #self.lru_left = 2**(self.inv_count) / self.beta
-                #self.lru_left = int(2**(0.0625*(self.inv_count - self.beta)))
-
-            if self.lru_left >= 1:
-                target_index = self.evictor.evict([(i, -self.page_access_ts[i]) for i in list(range(self.associativity))])
-                self.lru_left -= 1
-            else:
-                target_index = self.evictor.evict([(i, self.preds[i]) for i in list(range(self.associativity))])
-                pred_call = 1
-            
-                self.evicted_ts[self.cache[target_index]] = self.timestamp
-
-        #if target_index in self.old_unvisited_set:
-        #    self.old_unvisited_set.remove(target_index)
-        
-        self.cache[target_index], self.pcs[target_index] = address, pc
-        self.page_access_ts[target_index] = self.timestamp
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
-        self.after_pred(pc, address, target_index)
-
-        self.timestamp += 1
-
-        return hit, pred_call
+        return hit
 
 class Guard(PredictAlgorithm):
     """
@@ -1041,7 +630,6 @@ class Guard(PredictAlgorithm):
     def access(self, pc, address):
         to_guard = False
         target_index = -1
-        pred_call = 0
         hit = False
 
         self.before_pred(pc, address)
@@ -1070,7 +658,6 @@ class Guard(PredictAlgorithm):
                 target_index = random.choice(self.old_unvisited_set)
             else:
                 target_index = self.evictor.evict([(i, self.preds[i]) for i in self.unguarded_set])
-                pred_call = 1
             
             self.phase_evicted_set.add(self.cache[target_index])
 
@@ -1081,108 +668,8 @@ class Guard(PredictAlgorithm):
             self.unguarded_set.remove(target_index)
         
         self.cache[target_index], self.pcs[target_index] = address, pc
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
-        return hit, pred_call
-    
-class ExGuard(PredictAlgorithm):
-    """
-    ExGuard algorithm
-
-    Parameters:
-    
-    - follow_if_guarded
-
-    - relax_times
-
-    - relax_prob
-
-    - rand_budget
-
-    Our work
-    """
-    def __init__(self, associativity, evictor_type: Union[Type[Evictor], partial], predictor_type: Union[Predictor, partial], **kwargs) -> None:
-        super().__init__(associativity, evictor_type, predictor_type)
-        self.old_unvisited_set = []
-        self.unguarded_set = []
-        self.phase_evicted_set = set()
-        self.error_times = 0
-        self.page_rand_budget = {}
-
-        if 'follow_if_guarded' in kwargs:
-            self.follow_if_guarded = kwargs['follow_if_guarded']
-        else:
-            self.follow_if_guarded = False
-        if 'relax_times' in kwargs:
-            self.relax_times = kwargs['relax_times']
-        else:
-            self.relax_times = 0
-        if 'relax_prob' in kwargs:
-            self.relax_prob = kwargs['relax_prob']
-        else:
-            self.relax_prob = 0
-
-        if 'rand_budget' in kwargs:
-            self.rand_budget = kwargs['rand_budget']
-        else:
-            self.rand_budget = associativity
-
-    def access(self, pc, address):
-        to_guard = False
-        target_index = -1
-        pred_call = 0
-        hit = False
-
-        self.before_pred(pc, address)
-        if address in self.cache:
-            target_index = self.cache.index(address)
-            hit = True
-        elif None in self.cache:
-            target_index = self.cache.index(None)
-        else:
-            if not self.old_unvisited_set:
-                self.old_unvisited_set = list(range(self.associativity))
-                self.unguarded_set = list(range(self.associativity))
-                self.phase_evicted_set = set()
-                self.error_times = 0
-                self.page_rand_budget = {}
-            
-            if address in self.phase_evicted_set:
-                if self.relax_times != 0:
-                    self.error_times += 1
-                    if self.error_times >= self.relax_times:
-                        to_guard = True
-                else:
-                    if random.random() > self.relax_prob:
-                        to_guard = True
-
-            if to_guard and not self.follow_if_guarded:
-                if self.page_rand_budget[address] <= 0:
-                    target_index = self.evictor.evict([(i, self.preds[i]) for i in self.unguarded_set])
-                    self.page_rand_budget[self.cache[target_index]] = self.rand_budget
-                    pred_call = 1
-                else:
-                    target_index = random.choice(self.old_unvisited_set)
-                    self.page_rand_budget[self.cache[target_index]] = self.page_rand_budget[address] - 1
-            else:
-                target_index = self.evictor.evict([(i, self.preds[i]) for i in self.unguarded_set])
-                self.page_rand_budget[self.cache[target_index]] = self.rand_budget
-                pred_call = 1
-            
-            self.phase_evicted_set.add(self.cache[target_index])
-
-        if target_index in self.old_unvisited_set:
-            self.old_unvisited_set.remove(target_index)
-
-        if to_guard:
-            self.unguarded_set.remove(target_index)
-        
-        self.cache[target_index], self.pcs[target_index] = address, pc
-
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
-        self.after_pred(pc, address, target_index)
-        return hit, pred_call
+        return hit
 
 #######################################################################
 
@@ -1219,29 +706,20 @@ class CombineAlgorithm(EvictAlgorithm):
             raise ValueError('CombineAlgorithm: Algorithm Count < 2')
 
     def __push_candidates__(self, pc, address):
-        pred_ever_call = 0
         for i, (alg, _) in enumerate(self.candidate_algs):
-            hit, pred_call = alg.access(pc, address)
-            if pred_call == 1:
-                pred_ever_call = 1
-            if not hit:
+            if not alg.access(pc, address):
                 self.candidate_algs[i][1] += 1
                 self.__trigger_miss__(i, address)
-        return pred_ever_call
     
     def __push_candidates_boost__(self, pc, address, boost_pred):
-        pred_ever_call = 0
         for i, (alg, _) in enumerate(self.candidate_algs):
             if alg in self.boost_algs:
-                hit, pred_call = alg.boost_access(pc, address, boost_pred)
+                hit = alg.boost_access(pc, address, boost_pred)
             else:
-                hit, pred_call = alg.access(pc, address)
-            if pred_call == 1:
-                pred_ever_call = 1
+                hit = alg.access(pc, address)
             if not hit:
                 self.candidate_algs[i][1] += 1
                 self.__trigger_miss__(i, address)
-        return pred_ever_call
     
     def __trigger_miss__(self, i, address):
         pass
@@ -1278,12 +756,12 @@ class CombineAlgorithm(EvictAlgorithm):
         return hit
 
     def boost_access(self, pc, address, boost_pred):
-        pred_ever_call = self.__push_candidates_boost__(pc, address, boost_pred)
-        return self.__process__(pc, address), pred_ever_call
+        self.__push_candidates_boost__(pc, address, boost_pred)
+        return self.__process__(pc, address)
 
     def access(self, pc, address):
-        pred_ever_call = self.__push_candidates__(pc, address)
-        return self.__process__(pc, address), pred_ever_call
+        self.__push_candidates__(pc, address)
+        return self.__process__(pc, address)
 
 class CombineDeterministicAlgorithm(CombineAlgorithm):
     """
@@ -1381,7 +859,7 @@ class RandAlgorithm(EvictAlgorithm):
         
         self.cache[target_index] = address
         self.pcs[target_index] = pc
-        return hit, 0
+        return hit
 
 class LRUAlgorithm(EvictAlgorithm):
     def __init__(self, associativity):
@@ -1405,82 +883,7 @@ class LRUAlgorithm(EvictAlgorithm):
         self.pcs[target_index] = pc
         self.scores[target_index] = self.timestamp
         self.timestamp += 1
-        return hit, 0
-
-
-class Node:
-    def __init__(self, key, pc=None):
-        self.key = key
-        self.pc = pc
-        self.visited = 0
-        self.prev = None
-        self.next = None
-
-
-class SIEVEAlgorithm(EvictAlgorithm):
-    def __init__(self, associativity):
-        super().__init__(associativity)
-        self.map = {}          # key -> Node
-        self.head = None       # 链表头（最新插入）
-        self.tail = None       # 链表尾（最早插入）
-        self.hand = None       # hand 指针（从尾部向前扫描）
-
-    # ========== 链表操作 ==========
-    def _add_to_head(self, node):
-        node.prev = None
-        node.next = self.head
-        if self.head:
-            self.head.prev = node
-        self.head = node
-        if not self.tail:
-            self.tail = node
-
-    def _remove_node(self, node):
-        if node.prev:
-            node.prev.next = node.next
-        else:
-            self.head = node.next
-        if node.next:
-            node.next.prev = node.prev
-        else:
-            self.tail = node.prev
-        node.prev = node.next = None
-
-    # ========== SIEVE 操作 ==========
-    def access(self, pc, address):
-        hit = False
-
-        if address in self.map:
-            # Cache hit
-            node = self.map[address]
-            node.visited = 1
-            hit = True
-        else:
-            # Cache miss
-            if len(self.map) >= self.associativity:
-                self._evict()
-
-            node = Node(address, pc)
-            self._add_to_head(node)
-            self.map[address] = node
-
-        return hit, 0
-
-    def _evict(self):
-        """SIEVE 驱逐逻辑"""
-        o = self.hand or self.tail
-        while True:
-            if o is None:
-                o = self.tail
-            if o.visited == 1:
-                o.visited = 0
-                o = o.prev
-            else:
-                # evict this node
-                self.hand = o.prev
-                self._remove_node(o)
-                del self.map[o.key]
-                break
+        return hit
 
 class MarkerAlgorithm(EvictAlgorithm):
     def __init__(self, associativity):
@@ -1505,7 +908,7 @@ class MarkerAlgorithm(EvictAlgorithm):
         self.cache[target_index] = address
         self.pcs[target_index] = pc
         self.scores[target_index] = 1
-        return hit, 0
+        return hit
 
 ####################################################################
 
@@ -1524,9 +927,6 @@ class PredictAlgorithmFactory:
         "OracleBin": (BinaryEvictor, OracleBinaryPredictor),
         "OraclePhase": (BinaryEvictor, OraclePhasePredictor),
         "OracleState": (DummyEvictor, OracleStatePredictor),
-        "PredictiveLRU": (ReuseDistanceEvictor, PLECOStatePredictor), 
-        "PredictiveLinearLRU": (ReuseDistanceEvictor, PLECOStatePredictor), 
-        "PhaseLRU": (ReuseDistanceEvictor, PLECOStatePredictor), 
         "GuardLRB": (BinaryEvictor, LRBPredictor),  
         "SimpleGuardLRB": (BinaryEvictor, LRBPredictor),
     }
@@ -1665,33 +1065,6 @@ def pretty_print(callable: Union[EvictAlgorithm, partial], verbose=False) -> str
                     bin_noise_prob = pred_kw['bin_noise_prob']
                 metadata += format_oracle(reuse_dis_noise_sigma, bin_noise_prob) 
 
-        if issubclass(this_cls, PhaseLRU):
-            lru_budget = 0
-            if 'lru_budget' in kw:
-                lru_budget = kw['lru_budget']
-
-            metadata += f'({lru_budget})'
-
-        if issubclass(this_cls, PredictiveLRU) or issubclass(this_cls, PredictiveLinearLRU) or issubclass(this_cls, LARU):
-            beta = 0
-            alpha = 0
-            gamma = 0
-
-            if 'gamma' in kw:
-                gamma = kw['gamma']
-
-            if 'alpha' in kw:
-                alpha = kw['alpha']
-
-            if 'beta' in kw:
-                beta = kw['beta']
-
-            if gamma > 0:
-                metadata += f'-({gamma})'
-            if alpha > 0:
-                metadata += f'-({alpha})'
-            metadata += f'-({beta})'
-
         if issubclass(this_cls, SimpleGuardLRBAlgorithm):
             relax_times = relax_prob = 0
             if 'relax_times' in kw:
@@ -1712,17 +1085,15 @@ def pretty_print(callable: Union[EvictAlgorithm, partial], verbose=False) -> str
                     elif relax_times == 0 and relax_prob != 0:
                         return f"SimpleGuardLRB-RP{relax_prob}[LRB]"
 
-        if issubclass(this_cls, Guard) or issubclass(this_cls, ExGuard):
+        if issubclass(this_cls, Guard):
             follow_if_guarded = False
-            relax_times = relax_prob = rand_budget = 0
+            relax_times = relax_prob = 0
             if 'follow_if_guarded' in kw:
                 follow_if_guarded = kw['follow_if_guarded']
             if 'relax_times' in kw:
                 relax_times = kw['relax_times']
             if 'relax_prob' in kw:
                 relax_prob = kw['relax_prob']
-            if 'rand_budget' in kw:
-                rand_budget = kw['rand_budget']
             
             if 'predictor_type' in kw:
                 predictor_type = kw['predictor_type']
@@ -1741,8 +1112,6 @@ def pretty_print(callable: Union[EvictAlgorithm, partial], verbose=False) -> str
                 metadata += '-unv'
             else:
                 metadata += '-f-pred'
-
-                metadata += f'-rand_budget({rand_budget})'
             metadata += format_guard(relax_times, relax_prob)
             
     return metadata
@@ -1775,7 +1144,6 @@ class LRBAlgorithm(PredictAlgorithm):
     
     def access(self, pc, address):
         target_index = -1
-        pred_call = 0
         hit = False
         
         self.before_pred(pc, address)
@@ -1801,11 +1169,9 @@ class LRBAlgorithm(PredictAlgorithm):
                 
                 self.miss_counter += 1
                 return False
-
         if target_index >= 0:
             self.cache[target_index], self.pcs[target_index] = address, pc
             
-            # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
             self.after_pred(pc, address, target_index)
         
         return hit
@@ -2014,7 +1380,6 @@ class SimpleGuardLRBAlgorithm(PredictAlgorithm):
         
         self.cache[target_index], self.pcs[target_index] = address, pc
         
-        # Note that in the actual system, predictor is generally invoked at the time of eviction. We call predictor after an access just to evaluate caching algorithm performance (hit rate).
         self.after_pred(pc, address, target_index)
 
         return hit

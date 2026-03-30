@@ -172,13 +172,6 @@ class OracleDataTrace(object):
     def get_bucket_idx(self, pc, address):
         return self._hasher.get_bucket_index(self._aligner.get_aligned_addr(address), pc)
 
-    # Added helper to construct key when caller already has aligned address
-    def get_key_from_aligned(self, pc, aligned_address):
-        if self.enable_pc_align:
-            return f'{pc}_{aligned_address}'
-        else:
-            return aligned_address
-
     def _read_next(self):
         """Adds the next row in the CSV memory trace to the look-ahead buffer.
 
@@ -232,17 +225,6 @@ class OracleDataTrace(object):
         if not accesses:
             this_bucket_idx = self.get_bucket_idx(pc, address)
             bucket_size = self._bucket_counter[this_bucket_idx]
-            return bucket_size * self._scale + self._offset
-        return accesses[0]
-
-    # New optimized variant: caller supplies aligned address (and optionally bucket_idx)
-    def next_bucket_access_time_by_aligned(self, pc, aligned_address, bucket_idx=None):
-        key = self.get_key_from_aligned(pc, aligned_address)
-        accesses = self._bucket_access_times.get(key)
-        if not accesses:
-            if bucket_idx is None:
-                bucket_idx = self._hasher.get_bucket_index(aligned_address, pc)
-            bucket_size = self._bucket_counter[bucket_idx]
             return bucket_size * self._scale + self._offset
         return accesses[0]
 

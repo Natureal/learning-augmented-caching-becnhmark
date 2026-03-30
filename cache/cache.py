@@ -14,7 +14,6 @@ class Cache:
         self.evict_algs = None
         self.hits = 0
         self.miss = 0
-        self.pred_calls = 0
         self.counts = 0
         self._trace_path = trace_path
         self._aligner = aligner_type(cache_line_size)
@@ -41,55 +40,37 @@ class Cache:
                 oracle = True
             self.evict_algs.append(evict_alg)
         if oracle:
-            print("Cache: use oracle")
             self.__handle_oracle(trace_path)
-            print("Cache: finish oracle")
 
     def __handle_oracle(self, trace_path):
+        #with OracleDataTrace(trace_path, self._aligner, self.hash_func, scale_times=10000, offset=0) as sim_trace:
         with OracleDataTrace(trace_path, self._aligner, self.hash_func, scale_times=1, offset=1) as sim_trace:
-            count = 0
-            # Cache lookups / methods locally (optimization 2)
-            evict_algs = self.evict_algs
-            get_bucket_index = self.hash_func.get_bucket_index
-            align = self._aligner.get_aligned_addr
-            next_rec = sim_trace.next
-            done = sim_trace.done
-            next_bucket_time_aligned = sim_trace.next_bucket_access_time_by_aligned
-            # Print every N (optimization 1)
-            LOG_INTERVAL = 100000
-            while not done():
-                pc, address = next_rec()
-                aligned_address = align(address)
-                bucket_idx = get_bucket_index(aligned_address, pc)
-                # Avoid re-align + redundant key (optimization 3)
-                next_time = next_bucket_time_aligned(pc, aligned_address, bucket_idx)
-                evict_algs[bucket_idx].oracle_access(pc, aligned_address, next_time)
-                count += 1
-                if count % LOG_INTERVAL == 0:
-                    print(f"Oracle processed {count} traces")
+            # with tqdm.tqdm(desc="Oracle cache on MemoryTrace") as pbar:
+            while not sim_trace.done():
+                pc, address = sim_trace.next()
+                aligned_address = self._aligner.get_aligned_addr(address)
+                self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].oracle_access(pc, aligned_address, sim_trace.next_bucket_access_time_by_address(pc, address))
+                # self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].oracle_access(pc, aligned_address, sim_trace.next_access_time_by_address(pc, address))
+                # pbar.update(1)
 
     def access(self, pc, address):
         aligned_address = self._aligner.get_aligned_addr(address)
-        hit, pred_call = self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].access(pc, aligned_address)
-
+        hit = self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].access(pc, aligned_address)
+        
         if hit:
             self.hits += 1
         else:
             self.miss += 1
-
-        self.pred_calls += pred_call
-
         self.counts += 1
     
     def stat(self):
-        return (self.hits, self.miss, self.counts, round(self.hits / self.counts, 4), self.pred_calls)
+        return (self.hits, self.miss, self.counts, round(self.hits / self.counts, 4))
     
     # todo
-    def set_stat(self, hits, miss, counts, pred_calls):
+    def set_stat(self, hits, miss, counts):
         self.hits = hits
         self.miss = miss
         self.counts = counts
-        self.pred_calls = pred_calls
 
 class DumpCache(Cache):
     def __init__(self, is_state, trace_path, aligner_type, evict_type, hash_type, cache_line_size, cache_capacity, associativity):
@@ -124,15 +105,13 @@ class BoostCache(Cache):
     def access(self, pc, address):
         pred = self.boost_preds[self.ts]
         aligned_address = self._aligner.get_aligned_addr(address)
-        hit, pred_call = self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].boost_access(pc, aligned_address, pred)
+        hit = self.evict_algs[self.hash_func.get_bucket_index(aligned_address, pc)].boost_access(pc, aligned_address, pred)
         
         self.ts += 1
         if hit:
             self.hits += 1
         else:
             self.miss += 1
-
-        self.pred_calls += pred_call
         self.counts += 1
 
 class TrainingCache(Cache):

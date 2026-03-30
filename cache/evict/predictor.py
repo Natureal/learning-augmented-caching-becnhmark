@@ -59,11 +59,7 @@ class OraclePredictor(ABC):
             self.__oracle_access__(pc, address, next_access_time)
         else:
             if self.enable_lognormal:
-                #self.__oracle_access__(pc, address, next_access_time + np.random.lognormal(0, self.reuse_dis_noise_sigma))
-                if random.random() < self.reuse_dis_noise_sigma:
-                    self.__oracle_access__(pc, address, -next_access_time)
-                else:
-                    self.__oracle_access__(pc, address, next_access_time)
+                self.__oracle_access__(pc, address, next_access_time + np.random.lognormal(0, self.reuse_dis_noise_sigma))
             else:
                 self.__oracle_access__(pc, address, next_access_time + np.random.normal(0, self.reuse_dis_noise_sigma))
     @abstractmethod
@@ -181,7 +177,6 @@ class OracleStatePredictor(StatePredictor, OraclePredictor):
         return next_cache_state
 
     def __oracle_access__(self, pc, address, next_access_time):
-        # predict the cache content by imitating OPT
         if address in self.oracle_cache:
             target_index = self.oracle_cache.index(address)
         elif None in self.oracle_cache:
