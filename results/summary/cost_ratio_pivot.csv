@@ -1,0 +1,4 @@
+Dataset,OPT,LRB[LRB],CombDet[LRB[LRB], Marker],SimpleGuardLRB-RT0[LRB],CombineRandom[LRB[LRB], Marker],Mark0[LRB],Rand,Marker,LRU,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-0,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-1,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-2,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-4,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-8,PredictiveRPBNewOnlineMin[LRB]-msf-100-pb-100
+astar,1.0,1.153,1.187,1.211,1.189,1.21,1.463,1.522,1.533,1.535,1.553,1.557,1.559,1.559,1.559
+bzip,1.0,2.012,1.878,1.779,2.016,1.862,2.126,1.92,1.886,1.896,1.868,1.894,1.895,1.898,1.898
+xalanc,1.0,1.446,1.317,1.116,1.442,1.141,1.43,1.313,1.274,1.624,1.657,1.674,1.699,1.703,1.702

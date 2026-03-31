@@ -91,8 +91,15 @@ class DumpCache(Cache):
         self.evict_algs[idx].access(pc, aligned_address)
         this_preds = copy.deepcopy(self.evict_algs[idx].preds)
         if not self.is_state:
-            target_index = self.evict_algs[idx].cache.index(aligned_address)
-            self.boost_preds.append(this_preds[target_index])
+            if aligned_address in self.evict_algs[idx].cache:
+                target_index = self.evict_algs[idx].cache.index(aligned_address)
+                self.boost_preds.append(this_preds[target_index])
+            else:
+                # Address was not admitted (e.g. LRB admission control rejected it).
+                # Use the min prediction so boost also treats it as low-priority.
+                self.boost_preds.append(min(
+                    p for p in this_preds if p is not None
+                ))
         else:
             self.boost_preds.append(copy.deepcopy(this_preds))
 
